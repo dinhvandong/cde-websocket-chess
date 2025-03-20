@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Game</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+</head>
+<body>
+    <h1>Chess WebSocket Game</h1>
+    <input type="text" id="roomId" placeholder="Enter Room ID">
+    <button onclick="joinRoom()">Join Room</button>
+    <button onclick="sendMove('e2', 'e4')">Move e2 to e4</button>
+
+    <script>
+        let stompClient;
+        let roomId = "";
+        let playerId = "player_" + Math.floor(Math.random() * 1000);
+
+        function joinRoom() {
+            roomId = document.getElementById("roomId").value;
+            fetch(`http://localhost:8080/game/join?roomId=${roomId}&playerId=${playerId}`, { method: "POST" })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.joined) {
+                        console.log(`Joined Room: ${roomId}`);
+                        connectWebSocket();
+                    } else {
+                        alert("Room is full!");
+                    }
+                });
+        }
+
+        function connectWebSocket() {
+            const socket = new SockJS("http://localhost:8080/chess-websocket");
+            stompClient = Stomp.over(socket);
+            stompClient.connect({}, function () {
+                console.log("Connected to WebSocket");
+
+                stompClient.subscribe(`/room/${roomId}`, function (message) {
+                    const move = JSON.parse(message.body);
+                    console.log(`Move received in Room ${roomId}: ${move.from} to ${move.to}`);
+                });
+            });
+        }
+
+        function sendMove(from, to) {
+            const move = { from, to, player: playerId };
+            stompClient.send(`/app/move/${roomId}`, {}, JSON.stringify(move));
+            console.log(`Move sent: ${from} to ${to}`);
+        }
+    </script>
+</body>
+</html>

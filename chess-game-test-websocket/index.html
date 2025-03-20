@@ -6,50 +6,91 @@
     <title>Chess Game</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        #chessboard { display: grid; grid-template-columns: repeat(8, 50px); width: 400px; margin: auto; }
+        .square { width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; font-size: 24px; border: 1px solid black; }
+        .light { background-color: #f0d9b5; }
+        .dark { background-color: #b58863; }
+    </style>
 </head>
 <body>
-    <h1>Chess WebSocket Game</h1>
-    <input type="text" id="roomId" placeholder="Enter Room ID">
-    <button onclick="joinRoom()">Join Room</button>
-    <button onclick="sendMove('e2', 'e4')">Move e2 to e4</button>
+
+    <h2>Chess Game</h2>
+    <input type="text" id="roomId" placeholder="Enter Room ID" value="room_123">
+    <input type="text" id="playerId" placeholder="Enter Player ID">
+    <button onclick="joinGame()">Join Game</button>
+    <p id="status">Not connected</p>
+
+    <h3>Chessboard</h3>
+    <div id="chessboard"></div>
 
     <script>
         let stompClient;
-        let roomId = "";
-        let playerId = "player_" + Math.floor(Math.random() * 1000);
+        let roomId;
+        let playerId;
 
-        function joinRoom() {
+        function joinGame() {
             roomId = document.getElementById("roomId").value;
-            fetch(`http://localhost:8080/game/join?roomId=${roomId}&playerId=${playerId}`, { method: "POST" })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.joined) {
-                        console.log(`Joined Room: ${roomId}`);
-                        connectWebSocket();
-                    } else {
-                        alert("Room is full!");
-                    }
-                });
-        }
+            playerId = document.getElementById("playerId").value;
 
-        function connectWebSocket() {
+            if (!playerId) {
+                alert("Please enter a player ID!");
+                return;
+            }
+
             const socket = new SockJS("http://localhost:8080/chess-websocket");
             stompClient = Stomp.over(socket);
             stompClient.connect({}, function () {
                 console.log("Connected to WebSocket");
+                document.getElementById("status").innerText = "Connected to room: " + roomId;
 
+                // Subscribe to the room
                 stompClient.subscribe(`/room/${roomId}`, function (message) {
-                    const move = JSON.parse(message.body);
-                    console.log(`Move received in Room ${roomId}: ${move.from} to ${move.to}`);
+                    const data = JSON.parse(message.body);
+                    console.log("Received:", data);
+                    
+                    if (data.message === "connected") {
+                        alert("Both players are connected! Game starting...");
+                    } else if (data.move) {
+                        updateChessboard(data.move);
+                    }
                 });
+
+                // Send join request
+                stompClient.send("/app/joinRoom", {}, JSON.stringify({ roomId, playerId }));
             });
         }
 
-        function sendMove(from, to) {
-            const move = { from, to, player: playerId };
-            stompClient.send(`/app/move/${roomId}`, {}, JSON.stringify(move));
-            console.log(`Move sent: ${from} to ${to}`);
+        function sendMove(move) {
+            if (stompClient && stompClient.connected) {
+                stompClient.send("/app/move", {}, JSON.stringify({ roomId, playerId, move }));
+                console.log("Move sent:", move);
+            } else {
+                console.log("Not connected to WebSocket.");
+            }
         }
+
+        function updateChessboard(move) {
+            alert(`Move received: ${move}`);
+        }
+
+        // Create Chessboard UI
+        function createChessboard() {
+            const board = document.getElementById("chessboard");
+            board.innerHTML = "";
+            for (let row = 0; row < 8; row++) {
+                for (let col = 0; col < 8; col++) {
+                    const square = document.createElement("div");
+                    square.classList.add("square", (row + col) % 2 === 0 ? "light" : "dark");
+                    square.setAttribute("data-position", `${row}-${col}`);
+                    square.onclick = () => sendMove(`${row}-${col}`);
+                    board.appendChild(square);
+                }
+            }
+        }
+
+        createChessboard();
     </script>
 </body>
 </html>
